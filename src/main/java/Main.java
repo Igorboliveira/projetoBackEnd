@@ -4,89 +4,133 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Scanner;
 
-public class Main {
+public class Main{
     public static void main(String[] args) {
         try {
             String apiKey = "AQ.Ab8RN6INntQhXtsIbhGhmQlqCRaUU4OsQeh5LHlASoaHlpx7rQ";
-            String apiKeyLlama = "llx-rLBEt69o3L3W1xa690b8HLwrWslSMtUYQmEdLx3tMT0F6dZv";
+            String llamaHost = System.getenv("LLAMA_HOST");
+            if (llamaHost == null || llamaHost.isBlank()) {
+                llamaHost = "http://localhost:11434";
+            }
+            String urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=" + apiKey;
 
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=" + apiKey;
-            String urlLlama = "https://api.cloud.llamaindex.ai" + apiKeyLlama;
+            if (apiKey == null && llamaHost == null) {
+                System.out.println("ERRO: Variáveis de ambiente GEMINI_API_KEY ou GROQ_API_KEY não encontradas.");
+                return;
+            }
 
             Scanner scanner = new Scanner(System.in);
             HttpClient client = HttpClient.newHttpClient();
 
-            System.out.println("Cole a mensagem suspeita descobrir se é golpe:");
+            System.out.println("Cole a mensagem suspeita para descobrir se é golpe:");
             String mensagemUsuario = scanner.nextLine();
 
-            String textoLimpo = mensagemUsuario.replace("\"", "\\\"").replace("\n", "\\n");
-
+            String textoLimpo = mensagemUsuario.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
             String instrucao = "Você é um especialista em segurança digital. Analise a seguinte mensagem, diga se é um golpe e explique o motivo brevemente: " + textoLimpo;
 
-            String requestBody = "{\n" +
-                    "  \"contents\": [{\n" +
-                    "    \"parts\":[{\"text\": \"" + instrucao + "\"}]\n" +
-                    "  }],\n" +
-                    "  \"generationConfig\": {\n" +
-                    "    \"maxOutputTokens\": 1024,\n" +
-                    "    \"temperature\": 0.7\n" +
-                    "  }\n" +
-                    "}";
+            String requestBodyGemini = """
+                {
+                  "contents": [{"parts":[{"text": "%s"}]}],
+                  "generationConfig": { "maxOutputTokens": 1024, "temperature": 0.7 }
+                }
+                """.formatted(instrucao);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
+            HttpRequest requestGemini = HttpRequest.newBuilder()
+                    .uri(URI.create(urlGemini))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBodyGemini))
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            String corpoResposta = response.body();
+            HttpResponse<String> responseGemini = client.send(requestGemini, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() != 200 && response.statusCode() != 503) {
-                System.out.println("Erro na conexão! Código: " + response.statusCode());
-                System.out.println("Detalhes do erro: " + corpoResposta);
-                return;
-            }
-            else if (response.statusCode() == 503){
-                System.out.println("Erro 503");
-                String instrucaoLlama = "Você é um especialista em segurança digital. Analise a seguinte mensagem, diga se é um golpe e explique o motivo brevemente: " + textoLimpo;
+            if (responseGemini.statusCode() == 200) {
+                processarRespostaGemini(responseGemini.body());
+            } else {
+                System.out.println("Gemini fora ou limitado (Status " + responseGemini.statusCode() + "), alternando para Llama...");
 
-                String requestBodyLlama = "{\n" +
-                        "  \"contents\": [{\n" +
-                        "    \"parts\":[{\"text\": \"" + instrucao + "\"}]\n" +
-                        "  }],\n" +
-                        "  \"generationConfig\": {\n" +
-                        "    \"maxOutputTokens\": 1024,\n" +
-                        "    \"temperature\": 0.7\n" +
-                        "  }\n" +
-                        "}";
+                String requestBodyLlama = """
+                {
+                    "model": "llama3.2",
+                    "messages": [{"role": "user", "content": "%s"}],
+                    "stream": false,
+                    "options": {
+                        "temperature": 0.7,
+                        "num_predict": 1024
+                    }
+                }
+                """.formatted(instrucao);
+
+                HttpClient cllient =HttpClient.newHttpClient();
                 HttpRequest requestLlama = HttpRequest.newBuilder()
-                        .uri(URI.create(url))
+                        .uri(URI.create(llamaHost + "/api/chat"))
                         .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBodyLlama))
                         .build();
-                HttpResponse<String> responseLlama = client.send(request, HttpResponse.BodyHandlers.ofString());
-                String corpoRespostaLlama = responseLlama.body();
-                System.out.println("Alterando IA" + corpoRespostaLlama);
 
-            }
+                HttpResponse<String> responseLlama = client.send(requestLlama, HttpResponse.BodyHandlers.ofString());
 
-            try {
-                int inicioTexto = corpoResposta.indexOf("\"text\": \"") + 9;
-                int fimTexto = corpoResposta.lastIndexOf("\"\n          }");
-
-                String veredito = corpoResposta.substring(inicioTexto, fimTexto);
-                veredito = veredito.replace("\\n", "\n").replace("\\\"", "\"");
-
-                System.out.println("\n--- ANÁLISE DA PERGUNTA ---");
-                System.out.println(veredito);
-
-            } catch (Exception e) {
-                System.out.println("\nResposta bruta: " + corpoResposta);
+                if (responseLlama.statusCode() == 200) {
+                    processarRespostaLlama(responseLlama.body());
+                } else {
+                    System.out.println("Erro também no Llama! Código: " + responseLlama.statusCode());
+                    System.out.println("Detalhes: " + responseLlama.body());
+                }
             }
 
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private static void processarRespostaGemini(String json) {
+        try {
+            int inicio = json.indexOf("\"text\": \"");
+            if (inicio == -1) {
+                System.out.println("\nResposta bruta Gemini: " + json);
+                return;
+            }
+            inicio += 9;
+
+            int fim = json.indexOf("\"", inicio);
+            while (fim > 0 && json.charAt(fim - 1) == '\\') {
+                fim = json.indexOf("\"", fim + 1);
+            }
+
+            String veredito = json.substring(inicio, fim)
+                    .replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\");
+
+            System.out.println("\n--- ANÁLISE DA PERGUNTA (GEMINI) ---");
+            System.out.println(veredito);
+        } catch (Exception e) {
+            System.out.println("\nResposta bruta Gemini: " + json);
+        }
+    }
+
+    private static void processarRespostaLlama(String json) {
+        try {
+            int inicio = json.indexOf("\"content\": \"");
+            if (inicio == -1) {
+                System.out.println("\nResposta bruta Llama: " + json);
+                return;
+            }
+            inicio += 12;
+
+            int fim = json.indexOf("\"", inicio);
+            while (fim > 0 && json.charAt(fim - 1) == '\\') {
+                fim = json.indexOf("\"", fim + 1);
+            }
+
+            String veredito = json.substring(inicio, fim)
+                    .replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\");
+
+            System.out.println("\n--- ANÁLISE DA PERGUNTA (LLAMA) ---");
+            System.out.println(veredito);
+        } catch (Exception e) {
+            System.out.println("\nResposta bruta Llama: " + json);
         }
     }
 }
