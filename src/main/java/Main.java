@@ -66,7 +66,7 @@ public class Main {
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                         .build();
                 HttpResponse<String> responseLlama = client.send(request, HttpResponse.BodyHandlers.ofString());
-                String corpoRespostaLlama = response.body();
+                String corpoRespostaLlama = responseLlama.body();
                 System.out.println("Alterando IA" + corpoRespostaLlama);
 
             }
