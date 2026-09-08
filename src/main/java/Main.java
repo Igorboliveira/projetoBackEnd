@@ -42,18 +42,18 @@ public class Main {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             String corpoResposta = response.body();
 
-            if (response.statusCode() != 200 && response.statusCode() != 503) {
+            if (response.statusCode() != 200 && response.statusCode() != 503 && response.statusCode() != 429) {
                 System.out.println("Erro na conexão! Código: " + response.statusCode());
                 System.out.println("Detalhes do erro: " + corpoResposta);
                 return;
             }
-            else if (response.statusCode() == 503){
+            if (response.statusCode() == 503 || response.statusCode() == 429){
                 System.out.println("Erro 503");
                 String instrucaoLlama = "Você é um especialista em segurança digital. Analise a seguinte mensagem, diga se é um golpe e explique o motivo brevemente: " + textoLimpo;
 
                 String requestBodyLlama = "{\n" +
                         "  \"contents\": [{\n" +
-                        "    \"parts\":[{\"text\": \"" + instrucao + "\"}]\n" +
+                        "    \"parts\":[{\"text\": \"" + instrucaoLlama + "\"}]\n" +
                         "  }],\n" +
                         "  \"generationConfig\": {\n" +
                         "    \"maxOutputTokens\": 1024,\n" +
@@ -63,9 +63,9 @@ public class Main {
                 HttpRequest requestLlama = HttpRequest.newBuilder()
                         .uri(URI.create(url))
                         .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBodyLlama))
                         .build();
-                HttpResponse<String> responseLlama = client.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> responseLlama = client.send(requestLlama, HttpResponse.BodyHandlers.ofString());
                 String corpoRespostaLlama = responseLlama.body();
                 System.out.println("Alterando IA" + corpoRespostaLlama);
 
