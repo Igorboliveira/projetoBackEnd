@@ -12,9 +12,14 @@ public class Main{
             if (llamaHost == null || llamaHost.isBlank()) {
                 llamaHost = "http://localhost:11434";
             }
-            String urlGemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=" + apiKey;
 
-            if (apiKey == null && llamaHost == null) {
+            String urlGemini = "https://" +
+                    "generativelanguage.googleapis.com/" +
+                    "v1beta/models/" +
+                    "gemini-3.7-flash:generateContent?key="
+                    + apiKey;
+
+            if (apiKey == null && llamaHost.isBlank()) {
                 System.out.println("ERRO: Variáveis de ambiente GEMINI_API_KEY ou GROQ_API_KEY não encontradas.");
                 return;
             }
@@ -60,14 +65,14 @@ public class Main{
                 }
                 """.formatted(instrucao);
 
-                HttpClient cllient =HttpClient.newHttpClient();
+                HttpClient clientLlama =HttpClient.newHttpClient();
                 HttpRequest requestLlama = HttpRequest.newBuilder()
                         .uri(URI.create(llamaHost + "/api/chat"))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(requestBodyLlama))
                         .build();
 
-                HttpResponse<String> responseLlama = client.send(requestLlama, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> responseLlama = clientLlama.send(requestLlama, HttpResponse.BodyHandlers.ofString());
 
                 if (responseLlama.statusCode() == 200) {
                     processarRespostaLlama(responseLlama.body());
